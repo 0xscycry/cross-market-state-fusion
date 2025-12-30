@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional
 
 sys.path.insert(0, ".")
-from helpers import get_15m_markets, BinanceStreamer, OrderbookStreamer, Market, FuturesStreamer
+from helpers import get_15m_markets, BinanceStreamer, OrderbookStreamer, Market, FuturesStreamer, get_logger
 from strategies import (
     Strategy, MarketState, Action,
     create_strategy, AVAILABLE_STRATEGIES,
@@ -47,6 +47,9 @@ class Position:
     side: Optional[str] = None
     size: float = 0.0
     entry_price: float = 0.0
+    entry_time: Optional[datetime] = None
+    entry_prob: float = 0.0
+    time_remaining_at_entry: float = 0.0
 
 
 class TradingEngine:
@@ -75,6 +78,12 @@ class TradingEngine:
         self.total_pnl = 0.0
         self.trade_count = 0
         self.win_count = 0
+
+        # Pending rewards for RL (set on position close)
+        self.pending_rewards: Dict[str, float] = {}
+
+        # Logger (for RL training)
+        self.logger = get_logger() if isinstance(strategy, RLStrategy) else None
 
     def refresh_markets(self):
         """Find active 15-min markets."""
@@ -139,14 +148,16 @@ class TradingEngine:
         if pos.size > 0:
             if action.is_sell and pos.side == "UP":
                 pnl = (price - pos.entry_price) * pos.size
-                self._record_trade(pos, price, pnl, "CLOSE UP")
+                self._record_trade(pos, price, pnl, "CLOSE UP", cid=cid)
+                self.pending_rewards[cid] = pnl  # Pure realized PnL reward
                 pos.size = 0
                 pos.side = None
                 return
 
             elif action.is_buy and pos.side == "DOWN":
                 pnl = (pos.entry_price - price) * pos.size
-                self._record_trade(pos, price, pnl, "CLOSE DOWN")
+                self._record_trade(pos, price, pnl, "CLOSE DOWN", cid=cid)
+                self.pending_rewards[cid] = pnl  # Pure realized PnL reward
                 pos.size = 0
                 pos.side = None
                 return
@@ -159,6 +170,9 @@ class TradingEngine:
                 pos.side = "UP"
                 pos.size = trade_amount
                 pos.entry_price = price
+                pos.entry_time = datetime.now(timezone.utc)
+                pos.entry_prob = price
+                pos.time_remaining_at_entry = state.time_remaining
                 print(f"    OPEN {pos.asset} UP ({size_label}) ${trade_amount:.0f} @ {price:.3f}")
                 emit_trade(f"BUY_{size_label}", pos.asset, pos.size)
 
@@ -166,10 +180,13 @@ class TradingEngine:
                 pos.side = "DOWN"
                 pos.size = trade_amount
                 pos.entry_price = price
+                pos.entry_time = datetime.now(timezone.utc)
+                pos.entry_prob = price
+                pos.time_remaining_at_entry = state.time_remaining
                 print(f"    OPEN {pos.asset} DOWN ({size_label}) ${trade_amount:.0f} @ {price:.3f}")
                 emit_trade(f"SELL_{size_label}", pos.asset, pos.size)
 
-    def _record_trade(self, pos: Position, price: float, pnl: float, action: str):
+    def _record_trade(self, pos: Position, price: float, pnl: float, action: str, cid: str = None):
         """Record completed trade."""
         self.total_pnl += pnl
         self.trade_count += 1
@@ -179,50 +196,36 @@ class TradingEngine:
         # Emit to dashboard
         emit_trade(action, pos.asset, pos.size, pnl)
 
+        # Log to CSV
+        if self.logger and pos.entry_time:
+            duration = (datetime.now(timezone.utc) - pos.entry_time).total_seconds()
+            binance_change = 0.0
+            if cid and cid in self.open_prices:
+                current = self.price_streamer.get_price(pos.asset)
+                if current > 0 and self.open_prices[cid] > 0:
+                    binance_change = (current - self.open_prices[cid]) / self.open_prices[cid]
+
+            self.logger.log_trade(
+                asset=pos.asset,
+                action="BUY" if "UP" in action else "SELL",
+                side=pos.side or "UNKNOWN",
+                entry_price=pos.entry_price,
+                exit_price=price,
+                size=pos.size,
+                pnl=pnl,
+                duration_sec=duration,
+                time_remaining=pos.time_remaining_at_entry,
+                prob_at_entry=pos.entry_prob,
+                prob_at_exit=price,
+                binance_change=binance_change,
+                condition_id=cid
+            )
+
     def _compute_step_reward(self, cid: str, state: MarketState, action: Action, pos: Position) -> float:
-        """Compute dense reward signal for RL training."""
-        reward = 0.0
-        prev_state = self.prev_states.get(cid)
-        is_trade = action != Action.HOLD
-
-        # 1. Unrealized PnL delta (main signal)
-        if pos and pos.size > 0 and prev_state:
-            prev_pnl = prev_state.position_pnl if prev_state.has_position else 0.0
-            reward += (state.position_pnl - prev_pnl) * 0.1  # Scale down
-
-        # 2. Transaction cost penalty (scaled by position size)
-        if is_trade:
-            size_mult = action.size_multiplier
-            reward -= 0.002 * size_mult
-
-        # 3. Spread cost on entry (scaled by position size)
-        if is_trade and not (prev_state and prev_state.has_position):
-            size_mult = action.size_multiplier
-            reward -= state.spread * 0.5 * size_mult
-
-        # 4. Expiry urgency penalty (ramps up as time runs out)
-        if state.time_remaining < 0.1 and pos and pos.size > 0:
-            reward -= (0.1 - state.time_remaining) * 0.1
-
-        # 5. Holding with wrong momentum penalty
-        if pos and pos.size > 0:
-            momentum = state.returns_1m + state.returns_5m * 0.5
-            if pos.side == "UP" and momentum < -0.001:
-                reward -= 0.001
-            elif pos.side == "DOWN" and momentum > 0.001:
-                reward -= 0.001
-
-        # 6. Bonus for appropriate sizing based on confidence
-        # Large positions should be rewarded when momentum is strong
-        if is_trade:
-            size_mult = action.size_multiplier
-            mom_strength = abs(state.returns_1m + state.returns_5m)
-            if size_mult >= 0.5 and mom_strength > 0.003:  # Strong momentum with decent size
-                reward += 0.001
-            elif size_mult <= 0.25 and mom_strength > 0.005:  # Missed opportunity
-                reward -= 0.0005
-
-        return reward
+        """Compute reward signal for RL training - pure realized PnL."""
+        # Only reward on position close - cleaner signal
+        # Reward is set when trade closes in _execute_trade via self.pending_rewards
+        return self.pending_rewards.pop(cid, 0.0)
 
     def close_all_positions(self):
         """Close all positions at current prices."""
@@ -236,7 +239,8 @@ class TradingEngine:
                     else:
                         pnl = (pos.entry_price - price) * pos.size
 
-                    self._record_trade(pos, price, pnl, f"FORCE CLOSE {pos.side}")
+                    self._record_trade(pos, price, pnl, f"FORCE CLOSE {pos.side}", cid=cid)
+                    self.pending_rewards[cid] = pnl  # Pure realized PnL reward
                     pos.size = 0
                     pos.side = None
 
@@ -405,6 +409,8 @@ class TradingEngine:
 
                 # PPO update when buffer is full
                 if buffer_size >= self.strategy.buffer_size:
+                    # Get buffer rewards before update clears them
+                    buffer_rewards = [exp.reward for exp in self.strategy.experiences]
                     metrics = self.strategy.update()
                     if metrics:
                         print(f"  [RL] loss={metrics['policy_loss']:.4f} "
@@ -415,6 +421,15 @@ class TradingEngine:
                         # Send to dashboard
                         metrics['buffer_size'] = len(self.strategy.experiences)
                         update_rl_metrics(metrics)
+                        # Log to CSV
+                        if self.logger:
+                            self.logger.log_update(
+                                metrics=metrics,
+                                buffer_rewards=buffer_rewards,
+                                cumulative_pnl=self.total_pnl,
+                                cumulative_trades=self.trade_count,
+                                cumulative_wins=self.win_count
+                            )
 
     def _update_dashboard_only(self):
         """Update dashboard state without printing to console."""

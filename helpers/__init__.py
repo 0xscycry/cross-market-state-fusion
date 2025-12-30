@@ -18,6 +18,11 @@ from .binance_futures import (
     FuturesState,
     get_futures_snapshot,
 )
+from .training_logger import (
+    TrainingLogger,
+    get_logger,
+    reset_logger,
+)
 
 # Backwards compat
 get_active_markets = get_15m_markets
@@ -33,4 +38,7 @@ __all__ = [
     "FuturesStreamer",
     "FuturesState",
     "get_futures_snapshot",
+    "TrainingLogger",
+    "get_logger",
+    "reset_logger",
 ]

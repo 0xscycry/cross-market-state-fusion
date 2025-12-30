@@ -747,8 +747,13 @@ def state_emitter():
         emit_state()
 
 
-def run_dashboard(host='0.0.0.0', port=5050):
+def run_dashboard(host='0.0.0.0', port=None):
     """Run the dashboard server."""
+    import os
+    # Use PORT env var for Railway, fallback to 5050
+    if port is None:
+        port = int(os.environ.get('PORT', 5050))
+
     print(f"\n  RL Trading Lab")
     print(f"  http://localhost:{port}\n")
 

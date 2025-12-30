@@ -11,31 +11,21 @@ from enum import Enum
 
 class Action(Enum):
     HOLD = 0
-    BUY_SMALL = 1   # Buy UP token (25% of max size)
-    BUY_MEDIUM = 2  # Buy UP token (50% of max size)
-    BUY_LARGE = 3   # Buy UP token (100% of max size)
-    SELL_SMALL = 4  # Sell UP token (25% of max size)
-    SELL_MEDIUM = 5 # Sell UP token (50% of max size)
-    SELL_LARGE = 6  # Sell UP token (100% of max size)
+    BUY = 1   # Buy UP token
+    SELL = 2  # Sell UP token
 
     @property
     def is_buy(self) -> bool:
-        return self in (Action.BUY_SMALL, Action.BUY_MEDIUM, Action.BUY_LARGE)
+        return self == Action.BUY
 
     @property
     def is_sell(self) -> bool:
-        return self in (Action.SELL_SMALL, Action.SELL_MEDIUM, Action.SELL_LARGE)
+        return self == Action.SELL
 
     @property
     def size_multiplier(self) -> float:
-        """Returns 0.25, 0.5, or 1.0 based on action size."""
-        if self in (Action.BUY_SMALL, Action.SELL_SMALL):
-            return 0.25
-        elif self in (Action.BUY_MEDIUM, Action.SELL_MEDIUM):
-            return 0.5
-        elif self in (Action.BUY_LARGE, Action.SELL_LARGE):
-            return 1.0
-        return 0.0
+        """Fixed 50% sizing for all trades."""
+        return 0.5 if self in (Action.BUY, Action.SELL) else 0.0
 
 
 @dataclass

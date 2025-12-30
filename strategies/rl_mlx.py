@@ -29,7 +29,7 @@ class Experience:
 class Actor(nn.Module):
     """Policy network: state -> action probabilities."""
 
-    def __init__(self, input_dim: int = 18, hidden_size: int = 128, output_dim: int = 7):
+    def __init__(self, input_dim: int = 18, hidden_size: int = 128, output_dim: int = 3):
         super().__init__()
         self.fc1 = nn.Linear(input_dim, hidden_size)
         self.fc2 = nn.Linear(hidden_size, hidden_size)
@@ -70,21 +70,21 @@ class RLStrategy(Strategy):
         hidden_size: int = 128,
         lr_actor: float = 1e-4,
         lr_critic: float = 3e-4,
-        gamma: float = 0.995,
+        gamma: float = 0.99,  # Shorter horizon for 15-min markets
         gae_lambda: float = 0.95,
         clip_epsilon: float = 0.2,
-        entropy_coef: float = 0.02,
+        entropy_coef: float = 0.10,  # Higher entropy to prevent premature convergence
         value_coef: float = 0.5,
         max_grad_norm: float = 0.5,
-        buffer_size: int = 2048,
-        batch_size: int = 128,
+        buffer_size: int = 512,  # Faster updates (4x more frequent)
+        batch_size: int = 64,  # Smaller batches for smaller buffer
         n_epochs: int = 10,
         target_kl: float = 0.02,
     ):
         super().__init__("rl")
         self.input_dim = input_dim
         self.hidden_size = hidden_size
-        self.output_dim = 7  # HOLD, BUY_SMALL/MED/LARGE, SELL_SMALL/MED/LARGE
+        self.output_dim = 3  # BUY, HOLD, SELL (simplified)
 
         # Hyperparameters
         self.lr_actor = lr_actor

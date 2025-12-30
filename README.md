@@ -1,12 +1,32 @@
 # Polymarket RL Trading
 
-Reinforcement learning system for trading 15-minute binary prediction markets on Polymarket.
+PPO agent trading 4 concurrent 15-minute binary prediction markets (BTC, ETH, SOL, XRP) on Polymarket. Built with MLX for Apple Silicon.
 
-## Overview
+**Key features:**
+- Trades 4 markets simultaneously with shared policy
+- Fuses Binance spot/futures + Polymarket orderbook data (18-dim state)
+- Pure realized PnL reward - sparse signal at market resolution
+- On-device training via MLX
 
-This system uses PPO (Proximal Policy Optimization) with MLX for Apple Silicon GPU acceleration to learn trading strategies on Polymarket's 15-minute crypto prediction markets (BTC, ETH, SOL, XRP).
+## Training Journal
 
-The markets are binary options that resolve to $1 or $0 based on whether the underlying asset's price is above or below its opening price at market close.
+### Run 1: Initial Training (36 updates)
+- **Problem**: Entropy collapsed 1.09 → 0.36 (policy became deterministic)
+- **Cause**: Reward shaping dominated actual PnL signal
+- **Result**: $3.90 PnL, 1545 trades, 20% win rate
+
+### Run 2: Pure PnL Reward (ongoing)
+Switched to pure realized PnL reward, doubled entropy coefficient.
+
+| Update | Entropy | PnL | Trades | Win Rate |
+|--------|---------|-----|--------|----------|
+| 1 | 0.68 | $5.20 | 27 | 33% |
+| 10 | 1.06 | $9.55 | 616 | 23% |
+| 22 | 1.02 | $8.13 | 1885 | 21% |
+
+**Key insight**: Entropy stable at 1.02-1.08, model exploring properly. PnL volatile but positive ($6-10 range). Win rate ~21% but profitable due to asymmetric payoffs.
+
+See [TRAINING_JOURNAL.md](TRAINING_JOURNAL.md) for full analysis.
 
 ## Architecture
 
