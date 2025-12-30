@@ -12,7 +12,7 @@ A PPO (Proximal Policy Optimization) agent that paper trades Polymarket's 15-min
 
 ## What This Proves
 
-1. **RL can learn from sparse PnL signals** - The agent only gets reward when positions close. No intermediate feedback during the 15-minute window. Despite this sparsity, it learns profitable patterns. 109% ROI on paper trades over ~2 hours.
+1. **RL can learn from sparse PnL signals** - The agent only gets reward when positions close. No intermediate feedback during the 15-minute window. Despite this sparsity, it learns profitable patterns (55% ROI in Phase 2 training).
 
 2. **Multi-source data fusion works** - Combining Binance futures order flow and Polymarket orderbook state into a single 18-dim observation gives the agent useful signal.
 
