@@ -10,7 +10,7 @@ Training a PPO agent to trade 15-minute binary prediction markets. This document
 
 **Setup**: Paper trade 4 concurrent crypto markets (BTC, ETH, SOL, XRP) on Polymarket using live data from Binance + Polymarket orderbooks. $5 per trade, max $20 exposure (all 4 markets).
 
-**Result**: After a failed first attempt, achieved 55% ROI in Phase 2 (36 updates, ~1 hour). The path there was interesting.
+**Result**: 55% ROI in Phase 2 (36 updates, ~1 hour). The path there was interesting.
 
 ---
 
@@ -178,7 +178,7 @@ norm_reward = (raw_pnl - running_mean) / (running_std + 1e-8)
 | 20 | 1.05 | $5.85 | 21.1% |
 | 36 | 1.05 | $10.93 | 21.2% |
 
-**Final**: $10.93 PnL on $20 max exposure = **55% ROI** (or 109% if measuring per-trade capital)
+**Final**: $10.93 PnL on $20 max exposure = **55% ROI**
 
 ### The Win Rate Paradox
 
