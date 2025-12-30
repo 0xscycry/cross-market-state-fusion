@@ -44,6 +44,14 @@ Binance Futures WSS  → Price returns (1m, 5m, 10m), volatility, order flow, CV
 Polymarket CLOB WSS  → Bid/ask spread, orderbook imbalance
 ```
 
+**Why this matters**: Binance futures are the "fast" market (higher liquidity, institutional flow, sub-second price discovery). Polymarket is the "slow" market (lower liquidity, retail-heavy, prices lag by seconds). By observing both, the agent sees information before it's fully priced into the prediction market.
+
+This is a general pattern: **fast signal source + slow execution venue**. The same architecture could extend to:
+- Sports betting (live game data + betting exchange)
+- Election markets (polling/prediction aggregators + Polymarket)
+- Weather derivatives (forecast models + prediction markets)
+- Any market where information propagates with measurable delay
+
 This creates an 18-dimensional state that captures both underlying asset dynamics AND prediction market microstructure:
 
 | Category | Features |
