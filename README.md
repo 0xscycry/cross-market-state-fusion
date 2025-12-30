@@ -63,28 +63,22 @@ See [TRAINING_JOURNAL.md](TRAINING_JOURNAL.md) for full analysis.
 | **Position** | `has_position`, `position_side`, `position_pnl`, `time_remaining` | Current exposure |
 | **Regime** | `vol_regime`, `trend_regime` | Market environment context |
 
-### Action Space (7 actions)
+### Action Space (3 actions)
 
-| Action | Description | Size Multiplier |
-|--------|-------------|-----------------|
-| `HOLD` | No action | 0% |
-| `BUY_SMALL` | Long UP token | 25% |
-| `BUY_MEDIUM` | Long UP token | 50% |
-| `BUY_LARGE` | Long UP token | 100% |
-| `SELL_SMALL` | Long DOWN token | 25% |
-| `SELL_MEDIUM` | Long DOWN token | 50% |
-| `SELL_LARGE` | Long DOWN token | 100% |
+| Action | Description |
+|--------|-------------|
+| `HOLD (0)` | No action |
+| `BUY (1)` | Long UP token (50% position size) |
+| `SELL (2)` | Long DOWN token (50% position size) |
 
-### Reward Shaping
+*Note: Originally 7 actions with variable sizing (25/50/100%), simplified in Phase 2.*
 
-Dense reward signal for sample efficiency:
+### Reward Signal
 
-1. **Unrealized PnL delta** - Main learning signal
-2. **Transaction cost penalty** - Discourages overtrading
-3. **Spread cost on entry** - Accounts for slippage
-4. **Expiry urgency penalty** - Encourages closing before expiry
-5. **Momentum alignment bonus** - Rewards trading with trend
-6. **Size-confidence matching** - Rewards appropriate position sizing
+Pure realized PnL on position close - sparse but aligned with actual profit:
+- No shaping rewards (removed momentum bonuses, transaction penalties)
+- Reward only fires when position closes
+- Cleaner learning signal, harder credit assignment
 
 ## Data Sources
 
@@ -132,19 +126,17 @@ python run.py --strategy random      # Random baseline
 
 ## PPO Hyperparameters
 
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `lr_actor` | 3e-4 | Actor learning rate |
-| `lr_critic` | 1e-3 | Critic learning rate |
+| Parameter | Value | Description |
+|-----------|-------|-------------|
+| `lr_actor` | 1e-4 | Actor learning rate |
+| `lr_critic` | 3e-4 | Critic learning rate |
 | `gamma` | 0.99 | Discount factor |
 | `gae_lambda` | 0.95 | GAE lambda for advantage estimation |
 | `clip_epsilon` | 0.2 | PPO surrogate clipping range |
-| `entropy_coef` | 0.01 | Entropy bonus coefficient |
-| `buffer_size` | 2048 | Experience buffer before update |
-| `batch_size` | 128 | Mini-batch size for SGD |
+| `entropy_coef` | 0.10 | Entropy bonus coefficient (was 0.05 in Phase 1) |
+| `buffer_size` | 512 | Experience buffer before update |
+| `batch_size` | 64 | Mini-batch size for SGD |
 | `n_epochs` | 10 | PPO epochs per update |
-| `target_kl` | 0.02 | Early stopping KL threshold |
-| `max_grad_norm` | 0.5 | Gradient clipping |
 
 ## Network Architecture
 
@@ -152,7 +144,7 @@ python run.py --strategy random      # Random baseline
 Actor (Policy Network)
 ├── Linear(18 → 128) + Tanh
 ├── Linear(128 → 128) + Tanh
-└── Linear(128 → 7) + Softmax
+└── Linear(128 → 3) + Softmax
 
 Critic (Value Network)
 ├── Linear(18 → 128) + Tanh

@@ -68,30 +68,37 @@ Training runs on-device using Apple's MLX framework, enabling:
 
 ### State Space (18 features)
 ```
-Core:
-- prob: Current UP probability
-- prob_velocity: Rate of change in probability
-- time_remaining: Minutes until resolution (normalized)
+Momentum (3):
+- returns_1m, returns_5m, returns_10m: Ultra-short price momentum
 
-Orderbook:
-- bid_depth, ask_depth: Liquidity at best prices
-- spread: Bid-ask spread
-- imbalance: Order flow imbalance
+Order Flow (4):
+- ob_imbalance_l1, ob_imbalance_l5: Orderbook imbalance at levels 1 & 5
+- trade_flow_imbalance: Buy vs sell pressure
+- cvd_acceleration: Cumulative volume delta acceleration
 
-Binance Futures:
-- btc_change_1m, btc_change_5m: BTC price momentum
-- funding_rate: Perpetual funding rate
-- mark_premium: Mark vs index spread
+Microstructure (3):
+- spread_pct: Bid-ask spread as % of prob
+- trade_intensity: Recent trade frequency
+- large_trade_flag: Large trade detected
 
-Position:
-- has_position, position_side, unrealized_pnl
+Volatility (2):
+- vol_5m: 5-minute realized volatility
+- vol_expansion: Current vol vs recent average
+
+Position (4):
+- has_position, position_side, position_pnl, time_remaining
+
+Regime (2):
+- vol_regime, trend_regime: Market environment context
 ```
 
-### Action Space
+### Action Space (Current - Phase 2)
 - **HOLD (0)**: No action
 - **BUY (1)**: Buy UP token (betting price goes up)
 - **SELL (2)**: Sell UP token / buy DOWN (betting price goes down)
 - Fixed 50% position sizing ($5 on $10 base)
+
+*Phase 1 used 7 actions with variable sizing (25/50/100%) - see Changes Made section.*
 
 ### Architecture
 ```
@@ -250,7 +257,22 @@ self.pending_rewards[cid] = pnl  # Pure realized PnL
 
 **Rationale**: Prevent premature convergence, maintain exploration longer.
 
-### 3. Reset Reward Normalization
+### 3. Simplified Action Space
+
+**Before**: 7 actions with variable sizing
+```
+HOLD, BUY_SMALL (25%), BUY_MEDIUM (50%), BUY_LARGE (100%)
+SELL_SMALL (25%), SELL_MEDIUM (50%), SELL_LARGE (100%)
+```
+
+**After**: 3 actions with fixed sizing
+```
+HOLD (0), BUY (1), SELL (2) - all at 50% position size
+```
+
+**Rationale**: Reduce complexity. Let the model learn when to trade before learning how much.
+
+### 4. Reset Reward Normalization
 
 ```python
 # Reset stats while keeping weights
