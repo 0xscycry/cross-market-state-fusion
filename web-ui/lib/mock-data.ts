@@ -1,4 +1,5 @@
 import { BotStatus } from './types'
+import { getMockConfig } from './mock-config'
 
 // Mock data generator for development when the bot is not running
 
@@ -6,11 +7,10 @@ let mockPnL = 0
 let mockTrades: any[] = []
 let mockPnLHistory: Array<{ timestamp: string; pnl: number }> = []
 
-function generateRandomTrade(asset: string) {
+function generateRandomTrade(asset: string, size: number) {
   const side = Math.random() > 0.5 ? 'UP' : 'DOWN'
   const entryProb = Math.random() * 0.6 + 0.2 // 0.2 to 0.8
   const exitProb = Math.random() * 0.6 + 0.2
-  const size = 500
   const shares = size / entryProb
   const pnl = (exitProb - entryProb) * shares
   
@@ -40,10 +40,13 @@ function generateRandomTrade(asset: string) {
 }
 
 export function getMockStatus(): BotStatus {
-  // Simulate occasional new trades
+  // Get current config
+  const config = getMockConfig()
+  
+  // Simulate occasional new trades with current trade size
   if (Math.random() < 0.1) {
     const assets = ['BTC', 'ETH', 'SOL', 'XRP']
-    generateRandomTrade(assets[Math.floor(Math.random() * assets.length)])
+    generateRandomTrade(assets[Math.floor(Math.random() * assets.length)], config.trade_size)
   }
   
   const numTrades = mockTrades.length
@@ -66,7 +69,7 @@ export function getMockStatus(): BotStatus {
       position: Math.random() > 0.5 ? {
         side: 'UP' as const,
         entry_prob: 0.45,
-        size: 500,
+        size: config.trade_size,
         entry_time: new Date(now.getTime() - 420000).toISOString(),
       } : null,
       unrealized_pnl: Math.random() > 0.5 ? (Math.random() * 50 - 25) : null,
@@ -139,7 +142,7 @@ export function getMockStatus(): BotStatus {
       position: Math.random() > 0.7 ? {
         side: 'DOWN' as const,
         entry_prob: 0.62,
-        size: 500,
+        size: config.trade_size,
         entry_time: new Date(now.getTime() - 360000).toISOString(),
       } : null,
       unrealized_pnl: Math.random() > 0.7 ? (Math.random() * 40 - 20) : null,
@@ -205,8 +208,8 @@ export function getMockStatus(): BotStatus {
   ]
   
   return {
-    mode: 'train',
-    trade_size: 500,
+    mode: config.mode,
+    trade_size: config.trade_size,
     markets,
     performance: {
       total_pnl: mockPnL,
@@ -216,15 +219,15 @@ export function getMockStatus(): BotStatus {
       avg_pnl: avgPnl,
       avg_win: avgWin,
       avg_loss: avgLoss,
-      max_exposure: 2000,
+      max_exposure: config.max_exposure,
     },
     recent_trades: mockTrades.slice(0, 10),
     pnl_history: mockPnLHistory,
-    training_stats: {
+    training_stats: config.mode === 'train' ? {
       update: Math.floor(Math.random() * 100) + 1,
       policy_loss: Math.random() * 0.1,
       value_loss: Math.random() * 20 + 5,
       entropy: Math.random() * 0.3 + 0.9,
-    },
+    } : undefined,
   }
 }

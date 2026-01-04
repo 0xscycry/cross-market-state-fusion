@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { getMockStatus } from '@/lib/mock-data'
 
 // This endpoint proxies requests to the Python trading bot
 // Falls back to mock data if bot is not running
@@ -31,7 +32,6 @@ export async function GET() {
     console.warn('Bot not reachable, using mock data:', error instanceof Error ? error.message : 'Unknown error')
     
     // Return mock data when bot is not available
-    const { getMockStatus } = await import('@/lib/mock-data')
     return NextResponse.json(getMockStatus())
   }
 }

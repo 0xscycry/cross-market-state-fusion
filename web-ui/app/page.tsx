@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Dashboard from '@/components/Dashboard'
+import ControlPanel from '@/components/ControlPanel'
 import { BotStatus } from '@/lib/types'
 
 export default function Home() {
@@ -9,6 +10,7 @@ export default function Home() {
   const [isConnected, setIsConnected] = useState(false)
   const [isMockMode, setIsMockMode] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [showControls, setShowControls] = useState(false)
 
   useEffect(() => {
     // Poll status endpoint every 2 seconds
@@ -40,10 +42,25 @@ export default function Home() {
     return () => clearInterval(interval)
   }, [])
 
+  const handleConfigUpdate = (mode: 'train' | 'inference', size: number) => {
+    // Update local state optimistically
+    if (status) {
+      setStatus({
+        ...status,
+        mode,
+        trade_size: size,
+        performance: {
+          ...status.performance,
+          max_exposure: size * 4,
+        },
+      })
+    }
+  }
+
   return (
     <main className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white">
       {/* Header */}
-      <header className="border-b border-slate-700 bg-slate-900/50 backdrop-blur-sm">
+      <header className="border-b border-slate-700 bg-slate-900/50 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div>
@@ -55,6 +72,25 @@ export default function Home() {
               </p>
             </div>
             <div className="flex items-center gap-3">
+              <button
+                onClick={() => setShowControls(!showControls)}
+                className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg text-sm font-semibold transition-all flex items-center gap-2"
+              >
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"
+                  />
+                </svg>
+                {showControls ? 'Hide Controls' : 'Show Controls'}
+              </button>
               <div className="flex items-center gap-2">
                 <div
                   className={`w-3 h-3 rounded-full ${
@@ -116,7 +152,23 @@ export default function Home() {
           </div>
         )}
 
-        {status && <Dashboard status={status} />}
+        {status && (
+          <div className="space-y-6">
+            {/* Control Panel (collapsible) */}
+            {showControls && (
+              <div className="animate-in slide-in-from-top duration-300">
+                <ControlPanel
+                  currentMode={status.mode}
+                  currentSize={status.trade_size}
+                  onConfigUpdate={handleConfigUpdate}
+                />
+              </div>
+            )}
+
+            {/* Dashboard */}
+            <Dashboard status={status} />
+          </div>
+        )}
       </div>
 
       {/* Footer */}
