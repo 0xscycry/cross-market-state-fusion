@@ -1,0 +1,5 @@
+# Flask API Server Dependencies
+# Install with: pip install -r requirements-api.txt
+
+Flask>=3.0.0
+flask-cors>=4.0.0
