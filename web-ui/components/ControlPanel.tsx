@@ -6,14 +6,22 @@ import { formatCurrency } from '@/lib/utils'
 interface ControlPanelProps {
   currentMode: 'train' | 'inference'
   currentSize: number
-  onConfigUpdate: (mode: 'train' | 'inference', size: number) => void
+  enabledMarkets?: string[]
+  onConfigUpdate: (mode: 'train' | 'inference', size: number, markets?: string[]) => void
 }
 
 const TRADE_SIZES = [50, 100, 250, 500, 1000]
+const MARKETS = [
+  { symbol: 'BTC', name: 'Bitcoin', color: 'orange' },
+  { symbol: 'ETH', name: 'Ethereum', color: 'blue' },
+  { symbol: 'SOL', name: 'Solana', color: 'purple' },
+  { symbol: 'XRP', name: 'Ripple', color: 'cyan' },
+]
 
-export default function ControlPanel({ currentMode, currentSize, onConfigUpdate }: ControlPanelProps) {
+export default function ControlPanel({ currentMode, currentSize, enabledMarkets = ['BTC', 'ETH', 'SOL', 'XRP'], onConfigUpdate }: ControlPanelProps) {
   const [mode, setMode] = useState<'train' | 'inference'>(currentMode)
   const [size, setSize] = useState<number>(currentSize)
+  const [markets, setMarkets] = useState<string[]>(enabledMarkets)
   const [customSize, setCustomSize] = useState<string>('')
   const [showCustomInput, setShowCustomInput] = useState(false)
   const [isUpdating, setIsUpdating] = useState(false)
@@ -29,7 +37,11 @@ export default function ControlPanel({ currentMode, currentSize, onConfigUpdate 
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ mode, trade_size: size }),
+        body: JSON.stringify({ 
+          mode, 
+          trade_size: size,
+          enabled_markets: markets 
+        }),
       })
 
       if (!response.ok) {
@@ -37,7 +49,7 @@ export default function ControlPanel({ currentMode, currentSize, onConfigUpdate 
       }
 
       const data = await response.json()
-      onConfigUpdate(data.mode, data.trade_size)
+      onConfigUpdate(data.mode, data.trade_size, data.enabled_markets)
       setUpdateStatus('success')
       setTimeout(() => setUpdateStatus(null), 3000)
     } catch (error) {
@@ -62,6 +74,23 @@ export default function ControlPanel({ currentMode, currentSize, onConfigUpdate 
       setShowCustomInput(false)
       setCustomSize('')
     }
+  }
+
+  const toggleMarket = (symbol: string) => {
+    if (markets.includes(symbol)) {
+      // Don't allow disabling all markets
+      if (markets.length > 1) {
+        setMarkets(markets.filter(m => m !== symbol))
+      }
+    } else {
+      setMarkets([...markets, symbol])
+    }
+  }
+
+  const hasChanges = () => {
+    return mode !== currentMode || 
+           size !== currentSize || 
+           JSON.stringify(markets.sort()) !== JSON.stringify(enabledMarkets.sort())
   }
 
   return (
@@ -98,6 +127,53 @@ export default function ControlPanel({ currentMode, currentSize, onConfigUpdate 
               <div className="text-xs opacity-75 mt-1">Use trained model</div>
             </button>
           </div>
+        </div>
+
+        {/* Market Selection */}
+        <div>
+          <label className="block text-sm font-medium text-slate-400 mb-2">
+            Active Markets
+          </label>
+          <div className="grid grid-cols-2 gap-2">
+            {MARKETS.map((market) => {
+              const isEnabled = markets.includes(market.symbol)
+              const isOnlyOne = markets.length === 1 && isEnabled
+              
+              return (
+                <button
+                  key={market.symbol}
+                  onClick={() => toggleMarket(market.symbol)}
+                  disabled={isOnlyOne}
+                  className={`px-4 py-3 rounded-lg font-semibold transition-all flex items-center justify-between ${
+                    isEnabled
+                      ? `bg-${market.color}-500 text-white shadow-lg shadow-${market.color}-500/30`
+                      : 'bg-slate-700/50 text-slate-400 hover:bg-slate-700'
+                  } ${isOnlyOne ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  style={{
+                    backgroundColor: isEnabled ? 
+                      (market.color === 'orange' ? '#f97316' : 
+                       market.color === 'blue' ? '#3b82f6' : 
+                       market.color === 'purple' ? '#a855f7' : '#06b6d4') : undefined,
+                    boxShadow: isEnabled ? 
+                      (market.color === 'orange' ? '0 10px 25px -5px rgba(249, 115, 22, 0.3)' : 
+                       market.color === 'blue' ? '0 10px 25px -5px rgba(59, 130, 246, 0.3)' : 
+                       market.color === 'purple' ? '0 10px 25px -5px rgba(168, 85, 247, 0.3)' : '0 10px 25px -5px rgba(6, 182, 212, 0.3)') : undefined
+                  }}
+                >
+                  <div>
+                    <div className="text-sm">{market.symbol}</div>
+                    <div className="text-xs opacity-75">{market.name}</div>
+                  </div>
+                  <div className="text-lg">
+                    {isEnabled ? '✓' : '○'}
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+          <p className="text-xs text-slate-500 mt-2">
+            {markets.length} market{markets.length !== 1 ? 's' : ''} active • Max exposure: {formatCurrency(size * markets.length)}
+          </p>
         </div>
 
         {/* Trade Size Selection */}
@@ -156,12 +232,12 @@ export default function ControlPanel({ currentMode, currentSize, onConfigUpdate 
           {/* Current Selection Display */}
           <div className="mt-3 p-3 bg-slate-800/50 rounded-lg border border-slate-700">
             <div className="flex items-center justify-between">
-              <span className="text-sm text-slate-400">Current Size:</span>
+              <span className="text-sm text-slate-400">Per Market:</span>
               <span className="text-lg font-bold text-green-400">{formatCurrency(size)}</span>
             </div>
             <div className="flex items-center justify-between mt-1">
-              <span className="text-xs text-slate-500">Max Exposure (4 markets):</span>
-              <span className="text-sm font-semibold text-yellow-400">{formatCurrency(size * 4)}</span>
+              <span className="text-xs text-slate-500">Max Exposure ({markets.length} markets):</span>
+              <span className="text-sm font-semibold text-yellow-400">{formatCurrency(size * markets.length)}</span>
             </div>
           </div>
         </div>
@@ -169,11 +245,11 @@ export default function ControlPanel({ currentMode, currentSize, onConfigUpdate 
         {/* Update Button */}
         <button
           onClick={handleUpdate}
-          disabled={isUpdating || (mode === currentMode && size === currentSize)}
+          disabled={isUpdating || !hasChanges()}
           className={`w-full px-6 py-3 rounded-lg font-semibold transition-all ${
             isUpdating
               ? 'bg-slate-600 cursor-wait'
-              : mode === currentMode && size === currentSize
+              : !hasChanges()
               ? 'bg-slate-700 text-slate-500 cursor-not-allowed'
               : 'bg-gradient-to-r from-blue-500 to-cyan-500 text-white hover:from-blue-600 hover:to-cyan-600 shadow-lg'
           }`}
@@ -183,7 +259,7 @@ export default function ControlPanel({ currentMode, currentSize, onConfigUpdate 
               <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
               Updating...
             </span>
-          ) : mode === currentMode && size === currentSize ? (
+          ) : !hasChanges() ? (
             'No Changes'
           ) : (
             'Apply Changes'
@@ -207,12 +283,12 @@ export default function ControlPanel({ currentMode, currentSize, onConfigUpdate 
 
         {/* Info Box */}
         <div className="p-4 bg-blue-900/20 border border-blue-500/30 rounded-lg">
-          <h3 className="text-sm font-semibold text-blue-400 mb-2">Trade Sizing Info</h3>
+          <h3 className="text-sm font-semibold text-blue-400 mb-2">Configuration Info</h3>
           <ul className="text-xs text-slate-400 space-y-1">
-            <li>• Each position uses the specified trade size</li>
-            <li>• Bot can have up to 4 concurrent positions (one per market)</li>
+            <li>• Each enabled market uses the specified trade size</li>
+            <li>• Bot trades {markets.length} concurrent market{markets.length !== 1 ? 's' : ''} (15-min windows)</li>
             <li>• Larger sizes = higher potential profit and risk</li>
-            <li>• Recommended: Start with $50-100 for testing</li>
+            <li>• At least one market must remain enabled</li>
           </ul>
         </div>
       </div>

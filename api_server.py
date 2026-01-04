@@ -8,6 +8,8 @@ Usage:
 
 The server runs on port 5000 and provides:
     GET /api/status - Current bot status, markets, performance, trades
+    GET /api/config - Bot configuration
+    POST /api/config - Update bot configuration
 """
 
 import os
@@ -29,6 +31,7 @@ class BotState:
     def __init__(self):
         self.mode = 'train'
         self.trade_size = 500
+        self.enabled_markets = ['BTC', 'ETH', 'SOL', 'XRP']
         self.total_pnl = 0.0
         self.num_trades = 0
         self.num_wins = 0
@@ -51,8 +54,8 @@ class BotState:
             
         self.last_update = now
         
-        # Simulate occasional trades
-        if random.random() < 0.2 and self.num_trades < 100:
+        # Simulate occasional trades (only from enabled markets)
+        if random.random() < 0.2 and self.num_trades < 100 and len(self.enabled_markets) > 0:
             self._add_random_trade()
         
         # Update training stats
@@ -66,9 +69,11 @@ class BotState:
         self._update_markets()
     
     def _add_random_trade(self):
-        """Add a simulated trade"""
-        assets = ['BTC', 'ETH', 'SOL', 'XRP']
-        asset = random.choice(assets)
+        """Add a simulated trade from an enabled market"""
+        if len(self.enabled_markets) == 0:
+            return
+            
+        asset = random.choice(self.enabled_markets)
         side = random.choice(['UP', 'DOWN'])
         entry_prob = random.uniform(0.2, 0.8)
         exit_prob = random.uniform(0.2, 0.8)
@@ -106,14 +111,21 @@ class BotState:
             self.pnl_history.pop(0)
     
     def _update_markets(self):
-        """Update or create market data"""
-        assets = ['BTC', 'ETH', 'SOL', 'XRP']
-        
+        """Update or create market data (only for enabled markets)"""
         if len(self.markets) == 0:
-            # Initialize markets
-            for asset in assets:
+            # Initialize markets for enabled assets only
+            for asset in self.enabled_markets:
                 self.markets.append(self._create_market(asset))
         else:
+            # Remove markets that are no longer enabled
+            self.markets = [m for m in self.markets if m['asset'] in self.enabled_markets]
+            
+            # Add markets for newly enabled assets
+            existing_assets = {m['asset'] for m in self.markets}
+            for asset in self.enabled_markets:
+                if asset not in existing_assets:
+                    self.markets.append(self._create_market(asset))
+            
             # Update existing markets
             for market in self.markets:
                 # Update probabilities with small random walk
@@ -226,6 +238,7 @@ class BotState:
         return {
             'mode': self.mode,
             'trade_size': self.trade_size,
+            'enabled_markets': self.enabled_markets,
             'markets': self.markets,
             'performance': {
                 'total_pnl': self.total_pnl,
@@ -235,7 +248,7 @@ class BotState:
                 'avg_pnl': avg_pnl,
                 'avg_win': avg_win,
                 'avg_loss': avg_loss,
-                'max_exposure': self.trade_size * 4  # 4 concurrent markets
+                'max_exposure': self.trade_size * len(self.enabled_markets)
             },
             'recent_trades': self.trades[:20],
             'pnl_history': self.pnl_history,
@@ -263,7 +276,8 @@ def get_config():
     return jsonify({
         'mode': bot_state.mode,
         'trade_size': bot_state.trade_size,
-        'max_exposure': bot_state.trade_size * 4
+        'max_exposure': bot_state.trade_size * len(bot_state.enabled_markets),
+        'enabled_markets': bot_state.enabled_markets
     }), 200
 
 @app.route('/api/config', methods=['POST'])
@@ -271,16 +285,28 @@ def update_config():
     """Update bot configuration"""
     data = request.get_json()
     
+    # Validate and update mode
     if 'mode' in data and data['mode'] in ['train', 'inference']:
         bot_state.mode = data['mode']
     
+    # Validate and update trade size
     if 'trade_size' in data and isinstance(data['trade_size'], (int, float)) and data['trade_size'] > 0:
         bot_state.trade_size = float(data['trade_size'])
+    
+    # Validate and update enabled markets
+    if 'enabled_markets' in data:
+        if isinstance(data['enabled_markets'], list):
+            valid_markets = ['BTC', 'ETH', 'SOL', 'XRP']
+            enabled = [m for m in data['enabled_markets'] if m in valid_markets]
+            if len(enabled) > 0:
+                bot_state.enabled_markets = enabled
     
     return jsonify({
         'success': True,
         'mode': bot_state.mode,
-        'trade_size': bot_state.trade_size
+        'trade_size': bot_state.trade_size,
+        'max_exposure': bot_state.trade_size * len(bot_state.enabled_markets),
+        'enabled_markets': bot_state.enabled_markets
     }), 200
 
 @app.route('/health', methods=['GET'])
@@ -313,6 +339,7 @@ if __name__ == '__main__':
     print(f"Starting Flask server on http://localhost:5000")
     print(f"Mode: {bot_state.mode}")
     print(f"Trade Size: ${bot_state.trade_size}")
+    print(f"Enabled Markets: {', '.join(bot_state.enabled_markets)}")
     print("
 Endpoints:")
     print("  GET  /api/status  - Bot status and live data")

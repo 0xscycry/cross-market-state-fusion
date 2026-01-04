@@ -43,10 +43,10 @@ export function getMockStatus(): BotStatus {
   // Get current config
   const config = getMockConfig()
   
-  // Simulate occasional new trades with current trade size
-  if (Math.random() < 0.1) {
-    const assets = ['BTC', 'ETH', 'SOL', 'XRP']
-    generateRandomTrade(assets[Math.floor(Math.random() * assets.length)], config.trade_size)
+  // Simulate occasional new trades with current trade size from enabled markets only
+  if (Math.random() < 0.1 && config.enabled_markets.length > 0) {
+    const randomMarket = config.enabled_markets[Math.floor(Math.random() * config.enabled_markets.length)]
+    generateRandomTrade(randomMarket, config.trade_size)
   }
   
   const numTrades = mockTrades.length
@@ -58,26 +58,19 @@ export function getMockStatus(): BotStatus {
   const avgLoss = numLosses > 0 ? mockTrades.filter(t => t.pnl <= 0).reduce((sum, t) => sum + t.pnl, 0) / numLosses : 0
   
   const now = new Date()
-  const markets = [
+  
+  // Only create markets for enabled assets
+  const allMarkets = [
     {
+      symbol: 'BTC',
       condition_id: 'btc_mock_1',
       asset: 'BTC',
       question: 'Will BTC price be higher in 15 minutes?',
-      end_date: new Date(now.getTime() + 780000).toISOString(), // 13 min from now
+      end_date: new Date(now.getTime() + 780000).toISOString(),
       prob_up: 0.52 + Math.random() * 0.1 - 0.05,
       prob_down: 0.48 + Math.random() * 0.1 - 0.05,
-      position: Math.random() > 0.5 ? {
-        side: 'UP' as const,
-        entry_prob: 0.45,
-        size: config.trade_size,
-        entry_time: new Date(now.getTime() - 420000).toISOString(),
-      } : null,
-      unrealized_pnl: Math.random() > 0.5 ? (Math.random() * 50 - 25) : null,
-      last_action: {
-        action: 'BUY_UP' as const,
-        confidence: 0.65,
-      },
-      last_state: {
+      last_action: { action: 'BUY_UP' as const, confidence: 0.65 },
+      state: {
         returns_1m: 0.012,
         returns_5m: 0.034,
         returns_10m: 0.067,
@@ -99,19 +92,15 @@ export function getMockStatus(): BotStatus {
       },
     },
     {
+      symbol: 'ETH',
       condition_id: 'eth_mock_1',
       asset: 'ETH',
       question: 'Will ETH price be higher in 15 minutes?',
-      end_date: new Date(now.getTime() + 660000).toISOString(), // 11 min from now
+      end_date: new Date(now.getTime() + 660000).toISOString(),
       prob_up: 0.48 + Math.random() * 0.1 - 0.05,
       prob_down: 0.52 + Math.random() * 0.1 - 0.05,
-      position: null,
-      unrealized_pnl: null,
-      last_action: {
-        action: 'HOLD' as const,
-        confidence: null,
-      },
-      last_state: {
+      last_action: { action: 'HOLD' as const, confidence: null },
+      state: {
         returns_1m: -0.008,
         returns_5m: -0.021,
         returns_10m: -0.045,
@@ -133,24 +122,15 @@ export function getMockStatus(): BotStatus {
       },
     },
     {
+      symbol: 'SOL',
       condition_id: 'sol_mock_1',
       asset: 'SOL',
       question: 'Will SOL price be higher in 15 minutes?',
-      end_date: new Date(now.getTime() + 540000).toISOString(), // 9 min from now
+      end_date: new Date(now.getTime() + 540000).toISOString(),
       prob_up: 0.55 + Math.random() * 0.1 - 0.05,
       prob_down: 0.45 + Math.random() * 0.1 - 0.05,
-      position: Math.random() > 0.7 ? {
-        side: 'DOWN' as const,
-        entry_prob: 0.62,
-        size: config.trade_size,
-        entry_time: new Date(now.getTime() - 360000).toISOString(),
-      } : null,
-      unrealized_pnl: Math.random() > 0.7 ? (Math.random() * 40 - 20) : null,
-      last_action: {
-        action: 'HOLD' as const,
-        confidence: null,
-      },
-      last_state: {
+      last_action: { action: 'HOLD' as const, confidence: null },
+      state: {
         returns_1m: 0.003,
         returns_5m: 0.011,
         returns_10m: 0.028,
@@ -172,19 +152,15 @@ export function getMockStatus(): BotStatus {
       },
     },
     {
+      symbol: 'XRP',
       condition_id: 'xrp_mock_1',
       asset: 'XRP',
       question: 'Will XRP price be higher in 15 minutes?',
-      end_date: new Date(now.getTime() + 420000).toISOString(), // 7 min from now
+      end_date: new Date(now.getTime() + 420000).toISOString(),
       prob_up: 0.50 + Math.random() * 0.1 - 0.05,
       prob_down: 0.50 + Math.random() * 0.1 - 0.05,
-      position: null,
-      unrealized_pnl: null,
-      last_action: {
-        action: 'HOLD' as const,
-        confidence: null,
-      },
-      last_state: {
+      last_action: { action: 'HOLD' as const, confidence: null },
+      state: {
         returns_1m: -0.002,
         returns_5m: 0.004,
         returns_10m: 0.009,
@@ -206,10 +182,32 @@ export function getMockStatus(): BotStatus {
       },
     },
   ]
+
+  // Filter markets based on enabled_markets config
+  const markets = allMarkets
+    .filter(m => config.enabled_markets.includes(m.symbol))
+    .map(m => ({
+      condition_id: m.condition_id,
+      asset: m.asset,
+      question: m.question,
+      end_date: m.end_date,
+      prob_up: m.prob_up,
+      prob_down: m.prob_down,
+      position: Math.random() > 0.5 ? {
+        side: (Math.random() > 0.5 ? 'UP' : 'DOWN') as const,
+        entry_prob: Math.random() * 0.4 + 0.3,
+        size: config.trade_size,
+        entry_time: new Date(now.getTime() - 420000).toISOString(),
+      } : null,
+      unrealized_pnl: Math.random() > 0.5 ? (Math.random() * 50 - 25) : null,
+      last_action: m.last_action,
+      last_state: m.state,
+    }))
   
   return {
     mode: config.mode,
     trade_size: config.trade_size,
+    enabled_markets: config.enabled_markets,
     markets,
     performance: {
       total_pnl: mockPnL,

@@ -1,6 +1,7 @@
 export interface BotStatus {
   mode: 'train' | 'inference'
   trade_size: number
+  enabled_markets?: string[]
   markets: Market[]
   performance: Performance
   recent_trades: Trade[]

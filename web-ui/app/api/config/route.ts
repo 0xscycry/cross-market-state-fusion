@@ -59,6 +59,29 @@ export async function POST(request: Request) {
       }
     }
 
+    if (body.enabled_markets !== undefined) {
+      if (!Array.isArray(body.enabled_markets)) {
+        return NextResponse.json(
+          { error: 'Invalid enabled_markets. Must be an array' },
+          { status: 400 }
+        )
+      }
+      if (body.enabled_markets.length === 0) {
+        return NextResponse.json(
+          { error: 'At least one market must be enabled' },
+          { status: 400 }
+        )
+      }
+      const validMarkets = ['BTC', 'ETH', 'SOL', 'XRP']
+      const invalidMarkets = body.enabled_markets.filter((m: string) => !validMarkets.includes(m))
+      if (invalidMarkets.length > 0) {
+        return NextResponse.json(
+          { error: `Invalid markets: ${invalidMarkets.join(', ')}. Must be one of: ${validMarkets.join(', ')}` },
+          { status: 400 }
+        )
+      }
+    }
+
     // Try to connect to the bot on localhost:5000
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), 2000) // 2 second timeout
@@ -87,7 +110,8 @@ export async function POST(request: Request) {
     // Update mock config when bot is not available (demo mode)
     const updatedConfig = setMockConfig({
       mode: body.mode,
-      trade_size: body.trade_size
+      trade_size: body.trade_size,
+      enabled_markets: body.enabled_markets
     })
     
     // Return success response for demo mode
@@ -95,7 +119,8 @@ export async function POST(request: Request) {
       success: true,
       mode: updatedConfig.mode,
       trade_size: updatedConfig.trade_size,
-      max_exposure: updatedConfig.max_exposure
+      max_exposure: updatedConfig.max_exposure,
+      enabled_markets: updatedConfig.enabled_markets
     })
   }
 }

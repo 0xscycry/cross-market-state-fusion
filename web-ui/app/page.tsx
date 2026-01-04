@@ -42,16 +42,17 @@ export default function Home() {
     return () => clearInterval(interval)
   }, [])
 
-  const handleConfigUpdate = (mode: 'train' | 'inference', size: number) => {
+  const handleConfigUpdate = (mode: 'train' | 'inference', size: number, markets?: string[]) => {
     // Update local state optimistically
     if (status) {
       setStatus({
         ...status,
         mode,
         trade_size: size,
+        enabled_markets: markets || status.enabled_markets,
         performance: {
           ...status.performance,
-          max_exposure: size * 4,
+          max_exposure: size * (markets?.length || status.enabled_markets?.length || 4),
         },
       })
     }
@@ -160,6 +161,7 @@ export default function Home() {
                 <ControlPanel
                   currentMode={status.mode}
                   currentSize={status.trade_size}
+                  enabledMarkets={status.enabled_markets}
                   onConfigUpdate={handleConfigUpdate}
                 />
               </div>
