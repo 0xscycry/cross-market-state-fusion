@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import Dashboard from '@/components/Dashboard'
 import ControlPanel from '@/components/ControlPanel'
+import LiveTradingPanel from '@/components/LiveTradingPanel'
 import { BotStatus } from '@/lib/types'
 
 export default function Home() {
@@ -11,6 +12,7 @@ export default function Home() {
   const [isMockMode, setIsMockMode] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showControls, setShowControls] = useState(false)
+  const [showLiveTrading, setShowLiveTrading] = useState(false)
 
   useEffect(() => {
     // Poll status endpoint every 2 seconds
@@ -58,6 +60,11 @@ export default function Home() {
     }
   }
 
+  const handleLiveTradingToggle = (enabled: boolean) => {
+    console.log('Live trading toggled:', enabled)
+    // Could trigger a status refresh here
+  }
+
   return (
     <main className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white">
       {/* Header */}
@@ -73,6 +80,29 @@ export default function Home() {
               </p>
             </div>
             <div className="flex items-center gap-3">
+              <button
+                onClick={() => setShowLiveTrading(!showLiveTrading)}
+                className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 ${
+                  showLiveTrading
+                    ? 'bg-green-600 hover:bg-green-700 text-white'
+                    : 'bg-slate-700 hover:bg-slate-600 text-slate-200'
+                }`}
+              >
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M13 10V3L4 14h7v7l9-11h-7z"
+                  />
+                </svg>
+                Live Trading
+              </button>
               <button
                 onClick={() => setShowControls(!showControls)}
                 className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg text-sm font-semibold transition-all flex items-center gap-2"
@@ -155,6 +185,13 @@ export default function Home() {
 
         {status && (
           <div className="space-y-6">
+            {/* Live Trading Panel (collapsible) */}
+            {showLiveTrading && (
+              <div className="animate-in slide-in-from-top duration-300">
+                <LiveTradingPanel onToggle={handleLiveTradingToggle} />
+              </div>
+            )}
+
             {/* Control Panel (collapsible) */}
             {showControls && (
               <div className="animate-in slide-in-from-top duration-300">
@@ -177,7 +214,7 @@ export default function Home() {
       <footer className="border-t border-slate-700 bg-slate-900/50 backdrop-blur-sm mt-12">
         <div className="container mx-auto px-4 py-4 text-center text-sm text-slate-400">
           <p>
-            Paper Trading Only • Binance Futures + Polymarket CLOB •{' '}
+            Paper Trading • Live Trading Available •{' '}
             <a
               href="https://github.com/humanplane/cross-market-state-fusion"
               target="_blank"
