@@ -807,13 +807,13 @@ def run_dashboard(host='0.0.0.0', port=5051):
     import os
     port = int(os.environ.get('PORT', port))
 
-    print(f"\n  Cinematic Dashboard v2")
+    print("\n  Cinematic Dashboard v2")
     print(f"  http://localhost:{port}\n")
 
     emitter_thread = threading.Thread(target=state_emitter, daemon=True)
     emitter_thread.start()
 
-    socketio.run(app, host=host, port=port, debug=False, use_reloader=False)
+    socketio.run(app, host=host, port=port, debug=False, use_reloader=False, allow_unsafe_werkzeug=True)
 
 
 if __name__ == '__main__':
