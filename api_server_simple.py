@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
 Flask API server for Cross-Market State Fusion trading bot.
-Provides real-time status data to the web UI.
+Simplified version without heavy dependencies - provides mock live trading status.
 
 Usage:
-    python api_server.py
+    python api_server_simple.py
 
 The server runs on port 5000 and provides:
     GET /api/status - Current bot status, markets, performance, trades
@@ -19,25 +19,21 @@ import json
 import time
 from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional
-from flask import Flask, jsonify, request
-from flask_cors import CORS
-import threading
+
+try:
+    from flask import Flask, jsonify, request
+    from flask_cors import CORS
+except ImportError:
+    print("
+Error: Flask not installed. Install with: pip install Flask flask-cors")
+    exit(1)
+
 import random
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for Next.js dev server
 
-# Try to import live trading modules
-try:
-    from helpers.polymarket_executor import PolymarketExecutor, MockExecutor
-    from helpers.risk_manager import RiskManager, RiskLimits
-    LIVE_TRADING_AVAILABLE = True
-except ImportError:
-    LIVE_TRADING_AVAILABLE = False
-    print("Warning: Live trading modules not available")
-
-# Global state - in production, this would come from your actual trading bot
-# For now, we'll simulate live data
+# Global state - simulated bot and live trading data
 class BotState:
     def __init__(self):
         self.mode = 'train'
@@ -269,39 +265,47 @@ class BotState:
 # Global bot state instance
 bot_state = BotState()
 
-# Live Trading State
+# Live Trading State (simplified mock version)
 class LiveTradingState:
     def __init__(self):
         self.enabled = False
         self.mode = 'paper'  # 'paper' or 'live'
-        self.executor = None
-        self.risk_manager = None
         self.api_key_configured = False
         self.private_key_configured = False
         self.wallet_address = None
         self.errors = []
         
+        # Mock risk state
+        self.session_pnl = 0.0
+        self.daily_pnl = 0.0
+        self.current_equity = 10000.0
+        self.peak_equity = 10000.0
+        self.open_positions = 0
+        self.total_exposure = 0.0
+        self.consecutive_losses = 0
+        self.total_trades = 0
+        self.violations = 0
+        self.circuit_breaker_active = False
+        
+        # Mock executor stats
+        self.total_orders_placed = 0
+        self.total_fills = 0
+        self.total_cancellations = 0
+        
+        # Risk limits
+        self.max_position_size = 500.0
+        self.max_total_exposure = 2000.0
+        self.max_single_market_exposure = 1000.0
+        self.max_daily_loss = -1000.0
+        self.max_drawdown_pct = 0.30
+        self.max_consecutive_losses = 10
+        self.max_orders_per_minute = 30
+        self.max_orders_per_hour = 500
+        self.emergency_stop_loss = -2000.0
+        self.enable_circuit_breaker = True
+        
         # Check environment variables
         self._check_credentials()
-        
-        # Initialize risk manager (always available)
-        if LIVE_TRADING_AVAILABLE:
-            self.risk_manager = RiskManager(
-                limits=RiskLimits(
-                    max_position_size=500.0,
-                    max_total_exposure=2000.0,
-                    max_single_market_exposure=1000.0,
-                    max_daily_loss=-1000.0,
-                    max_drawdown_pct=0.30,
-                    max_consecutive_losses=10,
-                    max_orders_per_minute=30,
-                    max_orders_per_hour=500,
-                    emergency_stop_loss=-2000.0,
-                    enable_circuit_breaker=True
-                ),
-                initial_equity=10000.0,
-                verbose=False
-            )
     
     def _check_credentials(self):
         """Check if API credentials are configured."""
@@ -311,102 +315,64 @@ class LiveTradingState:
         self.api_key_configured = api_key is not None and len(api_key) > 0
         self.private_key_configured = private_key is not None and len(private_key) > 0
         
-        if self.private_key_configured and LIVE_TRADING_AVAILABLE:
-            try:
-                from eth_account import Account
-                account = Account.from_key(private_key)
-                self.wallet_address = account.address
-            except Exception as e:
-                self.errors.append(f"Invalid private key: {str(e)}")
-                self.private_key_configured = False
-    
-    def initialize_executor(self, use_mock: bool = False):
-        """Initialize order executor."""
-        if not LIVE_TRADING_AVAILABLE:
-            self.errors.append("Live trading modules not installed")
-            return False
-        
-        try:
-            if use_mock or not (self.api_key_configured and self.private_key_configured):
-                # Use mock executor for testing
-                self.executor = MockExecutor(verbose=True)
-                self.mode = 'paper'
-                return True
-            else:
-                # Use real executor
-                self.executor = PolymarketExecutor(
-                    private_key=os.getenv('POLYMARKET_PRIVATE_KEY'),
-                    api_key=os.getenv('POLYMARKET_API_KEY'),
-                    chain_id=137,  # Polygon mainnet
-                    verbose=True
-                )
-                self.mode = 'live'
-                return True
-        except Exception as e:
-            self.errors.append(f"Failed to initialize executor: {str(e)}")
-            return False
+        if self.private_key_configured:
+            # Mock wallet address
+            self.wallet_address = "0x" + "a" * 40
     
     def get_status(self) -> Dict[str, Any]:
         """Get current live trading status."""
-        # Get risk state
-        risk_state = {
-            'session_pnl': 0.0,
-            'daily_pnl': 0.0,
-            'current_equity': 10000.0,
-            'peak_equity': 10000.0,
-            'drawdown_pct': 0.0,
-            'open_positions': 0,
-            'total_exposure': 0.0,
-            'consecutive_losses': 0,
-            'total_trades': 0,
-            'violations': 0,
-            'circuit_breaker_active': False,
-        }
+        # Calculate drawdown
+        drawdown_pct = 0.0
+        if self.peak_equity > 0:
+            drawdown_pct = ((self.current_equity - self.peak_equity) / self.peak_equity) * 100
         
-        if self.risk_manager:
-            risk_state = self.risk_manager.get_status()
-        
-        # Get executor stats
-        executor_stats = {
-            'total_orders_placed': 0,
-            'total_fills': 0,
-            'total_cancellations': 0,
-            'fill_rate': 0.0,
-            'avg_slippage': 0.0,
-            'active_orders': 0,
-        }
-        
-        if self.executor:
-            executor_stats = self.executor.get_stats()
-        
-        # Check if can trade
-        can_trade = True
-        if self.risk_manager:
-            can_trade, _ = self.risk_manager.can_trade(cid='test', size=100.0)
+        # Calculate fill rate
+        fill_rate = 0.0
+        if self.total_orders_placed > 0:
+            fill_rate = self.total_fills / self.total_orders_placed
         
         return {
             'config': {
                 'enabled': self.enabled,
                 'mode': self.mode,
-                'executor_type': 'mock' if isinstance(self.executor, MockExecutor) else 'real',
+                'executor_type': 'mock',
                 'wallet_address': self.wallet_address,
                 'api_key_configured': self.api_key_configured,
             },
             'risk_limits': {
-                'max_position_size': self.risk_manager.limits.max_position_size if self.risk_manager else 500.0,
-                'max_total_exposure': self.risk_manager.limits.max_total_exposure if self.risk_manager else 2000.0,
-                'max_single_market_exposure': self.risk_manager.limits.max_single_market_exposure if self.risk_manager else 1000.0,
-                'max_daily_loss': self.risk_manager.limits.max_daily_loss if self.risk_manager else -1000.0,
-                'max_drawdown_pct': self.risk_manager.limits.max_drawdown_pct if self.risk_manager else 0.30,
-                'max_consecutive_losses': self.risk_manager.limits.max_consecutive_losses if self.risk_manager else 10,
-                'max_orders_per_minute': self.risk_manager.limits.max_orders_per_minute if self.risk_manager else 30,
-                'max_orders_per_hour': self.risk_manager.limits.max_orders_per_hour if self.risk_manager else 500,
-                'emergency_stop_loss': self.risk_manager.limits.emergency_stop_loss if self.risk_manager else -2000.0,
-                'enable_circuit_breaker': self.risk_manager.limits.enable_circuit_breaker if self.risk_manager else True,
+                'max_position_size': self.max_position_size,
+                'max_total_exposure': self.max_total_exposure,
+                'max_single_market_exposure': self.max_single_market_exposure,
+                'max_daily_loss': self.max_daily_loss,
+                'max_drawdown_pct': self.max_drawdown_pct,
+                'max_consecutive_losses': self.max_consecutive_losses,
+                'max_orders_per_minute': self.max_orders_per_minute,
+                'max_orders_per_hour': self.max_orders_per_hour,
+                'emergency_stop_loss': self.emergency_stop_loss,
+                'enable_circuit_breaker': self.enable_circuit_breaker,
             },
-            'risk_state': risk_state,
-            'executor_stats': executor_stats,
-            'can_trade': can_trade and self.enabled,
+            'risk_state': {
+                'session_pnl': self.session_pnl,
+                'daily_pnl': self.daily_pnl,
+                'current_equity': self.current_equity,
+                'peak_equity': self.peak_equity,
+                'drawdown_pct': drawdown_pct,
+                'open_positions': self.open_positions,
+                'total_exposure': self.total_exposure,
+                'consecutive_losses': self.consecutive_losses,
+                'total_trades': self.total_trades,
+                'violations': self.violations,
+                'circuit_breaker_active': self.circuit_breaker_active,
+            },
+            'executor_stats': {
+                'total_orders_placed': self.total_orders_placed,
+                'total_fills': self.total_fills,
+                'total_cancellations': self.total_cancellations,
+                'fill_rate': fill_rate,
+                'avg_slippage': 0.0,
+                'active_orders': 0,
+            },
+            'can_trade': self.enabled and not self.circuit_breaker_active,
             'errors': self.errors,
         }
 
@@ -492,36 +458,29 @@ def update_live_trading_config():
             
             if enabled and not live_trading_state.enabled:
                 # Enabling live trading
-                if not LIVE_TRADING_AVAILABLE:
-                    return jsonify({
-                        'error': 'Live trading not available',
-                        'message': 'Required packages not installed. Run: pip install eth-account'
-                    }), 400
-                
-                # Initialize executor
-                use_mock = not (live_trading_state.api_key_configured and live_trading_state.private_key_configured)
-                if not live_trading_state.initialize_executor(use_mock=use_mock):
-                    return jsonify({
-                        'error': 'Failed to initialize live trading',
-                        'message': '; '.join(live_trading_state.errors)
-                    }), 500
-                
                 live_trading_state.enabled = True
+                live_trading_state.mode = 'paper' if not (live_trading_state.api_key_configured and live_trading_state.private_key_configured) else 'live'
                 print(f"
+
 {'='*60}")
-                print("🟢 LIVE TRADING ENABLED")
-                print(f"Mode: {live_trading_state.mode}")
-                print(f"Executor: {'Mock' if use_mock else 'Real'}")
-                print(f"{'='*60}
+                print("
+🟢 LIVE TRADING ENABLED (Mock Mode)")
+                print(f"
+Mode: {live_trading_state.mode}")
+                print(f"
+{'='*60}
 ")
             
             elif not enabled and live_trading_state.enabled:
                 # Disabling live trading
                 live_trading_state.enabled = False
                 print(f"
+
 {'='*60}")
-                print("🔴 LIVE TRADING DISABLED")
-                print(f"{'='*60}
+                print("
+🔴 LIVE TRADING DISABLED")
+                print(f"
+{'='*60}
 ")
         
         # Handle credentials update
@@ -530,36 +489,38 @@ def update_live_trading_config():
             if 'api_key' in creds and creds['api_key']:
                 os.environ['POLYMARKET_API_KEY'] = creds['api_key']
                 live_trading_state.api_key_configured = True
-                print("✓ API key updated")
+                print("
+✓ API key updated")
             
             if 'private_key' in creds and creds['private_key']:
                 os.environ['POLYMARKET_PRIVATE_KEY'] = creds['private_key']
                 live_trading_state.private_key_configured = True
                 live_trading_state._check_credentials()
-                print("✓ Private key updated")
+                print("
+✓ Private key updated")
         
         # Handle risk limits update
-        if 'risk_limits' in data and live_trading_state.risk_manager:
+        if 'risk_limits' in data:
             limits_data = data['risk_limits']
-            limits = live_trading_state.risk_manager.limits
             
             # Update limits
             if 'max_position_size' in limits_data:
-                limits.max_position_size = float(limits_data['max_position_size'])
+                live_trading_state.max_position_size = float(limits_data['max_position_size'])
             if 'max_total_exposure' in limits_data:
-                limits.max_total_exposure = float(limits_data['max_total_exposure'])
+                live_trading_state.max_total_exposure = float(limits_data['max_total_exposure'])
             if 'max_single_market_exposure' in limits_data:
-                limits.max_single_market_exposure = float(limits_data['max_single_market_exposure'])
+                live_trading_state.max_single_market_exposure = float(limits_data['max_single_market_exposure'])
             if 'max_daily_loss' in limits_data:
-                limits.max_daily_loss = float(limits_data['max_daily_loss'])
+                live_trading_state.max_daily_loss = float(limits_data['max_daily_loss'])
             if 'max_drawdown_pct' in limits_data:
-                limits.max_drawdown_pct = float(limits_data['max_drawdown_pct'])
+                live_trading_state.max_drawdown_pct = float(limits_data['max_drawdown_pct'])
             if 'max_consecutive_losses' in limits_data:
-                limits.max_consecutive_losses = int(limits_data['max_consecutive_losses'])
+                live_trading_state.max_consecutive_losses = int(limits_data['max_consecutive_losses'])
             if 'emergency_stop_loss' in limits_data:
-                limits.emergency_stop_loss = float(limits_data['emergency_stop_loss'])
+                live_trading_state.emergency_stop_loss = float(limits_data['emergency_stop_loss'])
             
-            print("✓ Risk limits updated")
+            print("
+✓ Risk limits updated")
         
         # Return updated status
         status = live_trading_state.get_status()
@@ -575,10 +536,13 @@ def update_live_trading_config():
 def reset_circuit_breaker():
     """Manually reset circuit breaker"""
     try:
-        if not live_trading_state.risk_manager:
-            return jsonify({'error': 'Risk manager not initialized'}), 400
+        live_trading_state.circuit_breaker_active = False
+        live_trading_state.consecutive_losses = 0
         
-        live_trading_state.risk_manager.reset_circuit_breaker()
+        print("
+
+✓ Circuit breaker manually reset
+")
         
         status = live_trading_state.get_status()
         return jsonify(status), 200
@@ -593,22 +557,8 @@ def reset_circuit_breaker():
 def get_violations():
     """Get risk violations history"""
     try:
-        if not live_trading_state.risk_manager:
-            return jsonify({'violations': []}), 200
-        
-        violations = live_trading_state.risk_manager.get_violations()
-        
-        # Format violations for response
-        formatted = [
-            {
-                'timestamp': timestamp.isoformat(),
-                'type': violation.value,
-                'details': details
-            }
-            for timestamp, violation, details in violations[-50:]  # Last 50
-        ]
-        
-        return jsonify({'violations': formatted}), 200
+        # Return empty list for mock version
+        return jsonify({'violations': []}), 200
     
     except Exception as e:
         return jsonify({
@@ -624,7 +574,7 @@ def health():
     return jsonify({
         'status': 'healthy',
         'timestamp': datetime.now().isoformat(),
-        'live_trading_available': LIVE_TRADING_AVAILABLE
+        'live_trading_available': True  # Mock version always available
     }), 200
 
 @app.route('/', methods=['GET'])
@@ -633,6 +583,7 @@ def index():
     return jsonify({
         'name': 'Cross-Market State Fusion API',
         'version': '1.0.0',
+        'mode': 'simplified',
         'endpoints': {
             'GET /api/status': 'Get current bot status',
             'GET /api/config': 'Get bot configuration',
@@ -643,31 +594,49 @@ def index():
             'GET /api/live-trading/violations': 'Get risk violations',
             'GET /health': 'Health check'
         },
-        'live_trading_available': LIVE_TRADING_AVAILABLE
+        'live_trading_available': True
     }), 200
 
 if __name__ == '__main__':
     print("
+
 " + "="*60)
-    print("Cross-Market State Fusion API Server")
-    print("="*60)
-    print(f"Starting Flask server on http://localhost:5000")
-    print(f"Mode: {bot_state.mode}")
-    print(f"Trade Size: ${bot_state.trade_size}")
-    print(f"Enabled Markets: {', '.join(bot_state.enabled_markets)}")
-    print(f"Live Trading: {'Available' if LIVE_TRADING_AVAILABLE else 'Not Available'}")
     print("
+Cross-Market State Fusion API Server (Simplified)")
+    print("
+="*60)
+    print(f"
+Starting Flask server on http://localhost:5000")
+    print(f"
+Mode: {bot_state.mode}")
+    print(f"
+Trade Size: ${bot_state.trade_size}")
+    print(f"
+Enabled Markets: {', '.join(bot_state.enabled_markets)}")
+    print(f"
+Live Trading: Mock Mode (No real orders)")
+    print("
+
 Endpoints:")
-    print("  GET  /api/status                          - Bot status and live data")
-    print("  GET  /api/config                          - Configuration")
-    print("  POST /api/config                          - Update config")
-    print("  GET  /api/live-trading/status             - Live trading status")
-    print("  POST /api/live-trading/config             - Update live trading")
-    print("  POST /api/live-trading/reset-circuit-breaker - Reset circuit breaker")
-    print("  GET  /health                              - Health check")
     print("
+  GET  /api/status                          - Bot status and live data")
+    print("
+  GET  /api/config                          - Configuration")
+    print("
+  POST /api/config                          - Update config")
+    print("
+  GET  /api/live-trading/status             - Live trading status")
+    print("
+  POST /api/live-trading/config             - Update live trading")
+    print("
+  POST /api/live-trading/reset-circuit-breaker - Reset circuit breaker")
+    print("
+  GET  /health                              - Health check")
+    print("
+
 Press Ctrl+C to stop")
-    print("="*60 + "
+    print("
+="*60 + "
 ")
     
     # Run Flask app
